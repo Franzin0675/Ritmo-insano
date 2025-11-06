@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Rhythm Game — Atualizado (Hold Notes)</title>
+<style>
+    /* --- Hold notes: aparência mais visível --- */
+.note.hold{
+  height:44px !important;
+  border-radius:10px !important;
+  padding:0 6px !important;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  overflow:visible;
+}
+
+/* barra interna que representa a duração */
+.note.hold .hold-inner{
+  position:absolute;
+  left:8%;
+  bottom:6px;
+  height:28px;
+  border-radius:8px;
+  pointer-events:none;
+  box-shadow:0 4px 10px rgba(0,0,0,0.35);
+  display:flex;
+  align-items:center;
+  padding-left:8px;
+  gap:8px;
+  font-weight:700;
+  font-size:12px;
+}
+
+/* rótulo sutil dentro da barra de hold */
+.note.hold .hold-label{
+  background:rgba(0,0,0,0.12);
+  padding:3px 6px;
+  border-radius:6px;
+  font-size:11px;
+  opacity:0.95;
+}
+
+/* caps (pontas) para diferenciar claramente do ponto */
+.note.hold .cap-left,
+.note.hold .cap-right{
+  position:absolute;
+  bottom:6px;
+  width:10px;
+  height:28px;
+  border-radius:4px;
+  pointer-events:none;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+}
+
+/* cap esquerda alinhada */
+.note.hold .cap-left{ left: calc(10% - 2px); }
+
+/* cap direita será posicionada dinamicamente em JS (setando style.left) */
+.note.hold .cap-right{ }
+
+/* garantir que pontos normais fiquem visivelmente diferentes */
+.note.point{ height:40px !important; border-radius:8px !important; }
+
+  :root{
+    --bg:#061024;
+    --card:#0d1624;
+    --muted:#9fb0c9;
+    --accent:#4fb0ff;
+    --good:#4ee08a;
+    --bad:#ff6b6b;
+    --perfect:#ffd36b;
+    --col-0: #264653;
+    --col-1: #2a9d8f;
+    --col-2: #e9c46a;
+    --col-3: #f4a261;
+    --col-4: #90be6d;
+    --col-5: #577590;
+    --col-6: #6c6f78;
+  }
+  *{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  body{margin:0;background:linear-gradient(180deg,var(--bg),#02101a);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px}
+  .app{width:100%;max-width:1100px}
+  .card{background:rgba(255,255,255,0.03);border-radius:12px;padding:18px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  h1{margin:0;font-size:18px}
+  .menu{display:flex;gap:12px;align-items:center}
+  select,button{padding:8px 12px;border-radius:8px;border:0;background:linear-gradient(180deg,#0f1a2b,#081024);color:#e6eef8;cursor:pointer}
+  .flex{display:flex;gap:12px;align-items:center}
+  .board-wrap{margin-top:14px;position:relative}
+  .board{display:flex;gap:12px;align-items:flex-end;justify-content:center;position:relative;min-height:420px}
+  .lane{flex:1;border-radius:10px;padding:8px;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;min-height:360px}
+  .lane .label{font-size:14px;color:#e6eef8;margin-bottom:8px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,0.18)}
+  .hitline{position:absolute;bottom:64px;left:0;right:0;height:6px;border-radius:4px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);z-index:5;pointer-events:none}
+  .note{position:absolute;left:10%;width:80%;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;text-align:center;z-index:10;pointer-events:none;transition:bottom 0.05s linear, transform 0.08s ease}
+  .note.point{height:36px;border-radius:8px}
+  .note.hold{height:36px;border-radius:8px}
+  .note .label{font-size:12px;opacity:0.95}
+  .hud{display:flex;justify-content:space-between;margin-top:12px;align-items:center}
+  .score{font-size:18px}
+  .accuracy{font-size:14px;color:var(--muted)}
+  .controls{display:flex;gap:8px}
+  .big{font-size:16px;padding:10px 14px}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:200}
+  .overlay-inner{background:rgba(2,6,23,0.95);padding:22px;border-radius:12px;text-align:center;width:100%;max-width:560px}
+  footer{margin-top:16px;color:var(--muted);font-size:13px;text-align:center}
+  .feedback{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:300;font-size:20px;font-weight:800;padding:6px 12px;border-radius:8px;opacity:0;pointer-events:none}
+  /* column colors (subtle) */
+  .lane[data-col="1"]{background: linear-gradient(180deg, rgba(38,70,83,0.06), transparent)}
+  .lane[data-col="2"]{background: linear-gradient(180deg, rgba(42,157,143,0.06), transparent)}
+  .lane[data-col="3"]{background: linear-gradient(180deg, rgba(233,196,106,0.06), transparent)}
+  .lane[data-col="4"]{background: linear-gradient(180deg, rgba(244,162,97,0.06), transparent)}
+  .lane[data-col="5"]{background: linear-gradient(180deg, rgba(144,190,109,0.06), transparent)}
+  .lane[data-col="6"]{background: linear-gradient(180deg, rgba(87,117,144,0.06), transparent)}
+  .lane[data-col="7"]{background: linear-gradient(180deg, rgba(108,111,120,0.06), transparent)}
+</style>
+</head>
+<body>
+<div class="app card" id="app">
+  <header>
+    <h1>Rhythm Game</h1>
+    <div class="menu">
+      <div class="flex">
+        <select id="songSelect"></select>
+        <button id="btnStart" class="big">Iniciar</button>
+        <button id="btnMenu" class="big">Menu</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="mainArea">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+      <div>Teclas: <span id="keysDisplay" style="font-weight:700">-</span></div>
+      <div>Recorde: <span id="recordDisplay">—</span></div>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+    <div class="hud">
+      <div>
+        <div class="score">Score: <span id="score">0</span></div>
+        <div class="accuracy">Acertos: <span id="hits">0</span> / <span id="total">0</span> | Erros: <span id="misses">0</span></div>
+      </div>
+      <div class="controls">
+        <div style="color:var(--muted)">Use as teclas mostradas para jogar</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlayContainer"></div>
+</div>
+
+<script>
+/* index.html atualizado:
+ - Suporta hold notes: parser reconhece lines "time,column,start" e "time,column,end" e emparelha para duration
+ - Spawn de notes e hold bars, keydown/keyup com detecção de hold
+ - Avaliação Perfect/Good/Bad/Miss
+ - UI limpa e rótulos com teclas em cada coluna
+ - Cores sutis por coluna, notas mais grossas
+*/
+
+// ----- Config -----
+const MANIFEST_URL = 'tracks/manifest.json';
+const PIXELS_PER_SECOND_BASE = 250;
+const HITLINE_OFFSET = 64; // px
+const DEFAULT_KEYS = ['D','F','J','K'];
+
+// scoring windows (seconds)
+const PERFECT_WINDOW = 0.05;
+const GOOD_WINDOW = 0.12;
+const BAD_WINDOW = 0.18; // same as hitWindow in editor/game
+
+// ----- State -----
+let manifest = [];
+let manifestBase = '';
+let current = {
+  track: null,
+  notes: [], // normalized notes: {time, column, duration?}
+  keys: DEFAULT_KEYS.slice(),
+  columns: 4,
+  audio: null,
+  audioStarted: false,
+  speedScale: 1,
+  hitWindow: BAD_WINDOW,
+  score: 0,
+  hits: 0,
+  misses: 0,
+  totalNotes: 0,
+  spawnedIndex: 0,
+  activeNotes: [], // objects with dom, time, type...
+  activeHolds: {}, // column -> hold object while being held {note, pressedAt}
+  running: false,
+  startTime: 0
+};
+
+// shortcuts
+const el = id => document.getElementById(id);
+
+// ----- init -----
+window.addEventListener('load', init);
+
+async function init(){
+  bindUI();
+  try{
+    const res = await fetch(MANIFEST_URL);
+    if(!res.ok) throw new Error('manifest not found');
+    manifest = await res.json();
+    const idx = MANIFEST_URL.lastIndexOf('/');
+    manifestBase = idx >= 0 ? MANIFEST_URL.slice(0, idx+1) : '';
+    populateSongSelect();
+    if(manifest.length) await loadSongById(manifest[0].id);
+    showMenuOverlay();
+  }catch(e){
+    console.error('Manifest load error:', e);
+    // inform user gently
+    const sel = el('songSelect');
+    sel.innerHTML = '<option value="">Nenhuma música (verifique tracks/manifest.json)</option>';
+  }
+}
+
+function populateSongSelect(){
+  const sel = el('songSelect');
+  sel.innerHTML = '';
+  manifest.forEach(m=>{
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name || m.id;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', ()=> {
+    loadSongById(sel.value);
+    updateRecordDisplay();
+  });
+}
+
+// ----- load song / notes parsing (supports start/end pairs) -----
+async function loadSongById(id){
+  const meta = manifest.find(m=>m.id===id) || manifest[0];
+  if(!meta) return;
+  current.track = meta;
+  const notesPath = meta.notesFile ? resolvePath(manifestBase, meta.notesFile) : null;
+  const audioPath = meta.file ? resolvePath(manifestBase, meta.file) : null;
+  // name display
+  if(meta.nameFile){
+    try{
+      const r = await fetch(resolvePath(manifestBase, meta.nameFile));
+      if(r.ok){
+        const txt = (await r.text()).trim().split('\\n')[0];
+        for(const opt of el('songSelect').options) if(opt.value===id) opt.textContent = txt || id;
+      }
+    }catch(e){}
+  }
+  // load notes
+  try{
+    if(!notesPath) throw new Error('notesFile não definido');
+    const r = await fetch(notesPath);
+    if(!r.ok) throw new Error('notes fetch failed');
+    const raw = await r.text();
+    parseNotesTxtForGame(raw); // fills current.notes with normalized structure
+    updateKeysDisplay();
+    updateRecordDisplay();
+    console.log('notes loaded', current.notes.length);
+  }catch(e){
+    console.error('notes load error', e);
+    current.notes = [];
+    current.totalNotes = 0;
+  }
+  // audio
+  if(current.audio){ try{ current.audio.pause(); }catch(e){} current.audio = null; current.audioStarted = false; }
+  if(audioPath){
+    current.audio = new Audio(audioPath);
+    current.audio.preload = 'auto';
+  }
+  buildBoard();
+}
+
+// resolve relative paths (manifestBase + path)
+function resolvePath(base, path){
+  if(!path) return path;
+  if(path.match(/^[a-zA-Z]+:\/\//)) return path;
+  if(path.startsWith('/')) return path;
+  return base ? base + path : path;
+}
+
+/* Parser: supports exported format from your editor:
+   - header lines starting with # (e.g. #keys: D F J K)
+   - note lines:
+       time,column        -> point note
+       time,column,start  -> start of hold
+       time,column,end    -> end of hold
+   We'll pair start+end into normalized note {time: start, column, duration}
+*/
+
+function parseNotesTxtForGame(txt){
+  const lines = String(txt || '').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  let headerKeys = null, headerColumns = null, offset = 0;
+  const starts = [], ends = [], points = [];
+
+  for(const line of lines){
+    if(line.startsWith('#')){
+      const rest = line.slice(1).trim();
+      if(rest.toLowerCase().startsWith('keys:')){
+        // pega tokens e filtra lixo (evita strings enormes)
+        const tokens = rest.slice(5).trim().split(/\s+/).map(t=>t.trim()).filter(t=>t.length>0 && t.length <= 6);
+        if(tokens.length) headerKeys = tokens.map(t=>t.toUpperCase());
+      } else if(rest.toLowerCase().startsWith('columns:')){
+        const parsed = parseInt(rest.slice(8).trim());
+        if(!isNaN(parsed) && parsed > 0) headerColumns = parsed;
+      } else if(rest.toLowerCase().startsWith('offset:')){
+        const parsed = parseFloat(rest.slice(7).trim());
+        if(!isNaN(parsed)) offset = parsed;
+      }
+      continue;
+    }
+
+    const parts = line.split(',').map(p => p.trim());
+    if(parts.length >= 2){
+      const time = parseFloat(parts[0]);
+      const col = parseInt(parts[1]);
+      const type = parts[2] ? String(parts[2]).toLowerCase() : null;
+      if(isNaN(time) || isNaN(col)) continue;
+      if(type === 'start') starts.push({time: time + offset, column: col});
+      else if(type === 'end') ends.push({time: time + offset, column: col});
+      else points.push({time: time + offset, column: col});
+    } else {
+      // tenta interpretar linhas do tipo "A 5.00" (tecla + tempo)
+      const sp = line.split(/\s+/);
+      if(sp.length === 2){
+        const a = sp[0], b = sp[1];
+        if(isNaN(parseFloat(a)) && !isNaN(parseFloat(b))){
+          // tecla + tempo -> deixamos para importadores com headerKeys
+          if(headerKeys){
+            const key = a.toUpperCase();
+            const idx = headerKeys.indexOf(key);
+            points.push({time: parseFloat(b) + offset, column: (idx !== -1 ? idx+1 : 1)});
+          }
+        } else if(!isNaN(parseFloat(a)) && isNaN(parseFloat(b))){
+          // tempo + tecla -> similar
+          if(headerKeys){
+            const key = b.toUpperCase();
+            const idx = headerKeys.indexOf(key);
+            points.push({time: parseFloat(a) + offset, column: (idx !== -1 ? idx+1 : 1)});
+          }
+        }
+      }
+    }
+  }
+
+  // pair starts/ends into holds
+  const holds = [];
+  starts.sort((a,b)=>a.time-b.time);
+  ends.sort((a,b)=>a.time-b.time);
+  for(const s of starts){
+    const partnerIdx = ends.findIndex(e => e.column === s.column && e.time > s.time);
+    if(partnerIdx !== -1){
+      const e = ends.splice(partnerIdx,1)[0];
+      const duration = +(e.time - s.time).toFixed(3);
+      if(duration > 0) holds.push({time: s.time, column: s.column, duration});
+      else points.push({time: s.time, column: s.column}); // fallback
+    } else {
+      // sem end correspondente: converte pra point (fallback)
+      points.push({time: s.time, column: s.column});
+    }
+  }
+
+  // combine
+  const normalized = [];
+  points.forEach(p => normalized.push({time: +p.time.toFixed(3), column: p.column}));
+  holds.forEach(h => normalized.push({time: +h.time.toFixed(3), column: h.column, duration: h.duration}));
+  normalized.sort((a,b)=>a.time-b.time);
+
+  // segurança: headerKeys deve ser array curto; caso contrário use DEFAULT_KEYS
+  if(Array.isArray(headerKeys) && headerKeys.length > 0) {
+    // limite tamanho de cada token para evitar conteúdo de arquivo inteiro
+    headerKeys = headerKeys.map(k => (String(k).trim().split(/\s+/)[0] || '').toUpperCase()).filter(k => k.length>0);
+  } else {
+    headerKeys = null;
+  }
+
+  current.notes = normalized;
+  // só sobrescreve current.keys se headerKeys válidos
+  if(headerKeys && headerKeys.length){
+    current.keys = headerKeys.slice(0, headerColumns || headerKeys.length);
+  } else {
+    // não alterar keys se header não existir (evita colar texto inteiro)
+    if(!Array.isArray(current.keys) || current.keys.length === 0){
+      current.keys = DEFAULT_KEYS.slice();
+    }
+  }
+  current.columns = headerColumns || (current.keys ? current.keys.length : DEFAULT_KEYS.length);
+  current.totalNotes = current.notes.length;
+  current.hits = 0; current.misses = 0;
+  if(el('total')) el('total').textContent = current.totalNotes;
+  if(el('hits')) el('hits').textContent = 0;
+  if(el('misses')) el('misses').textContent = 0;
+}
+
+// ----- UI / board -----
+function bindUI(){
+  el('btnStart').addEventListener('click', startRun);
+  el('btnMenu').addEventListener('click', showMenuOverlay);
+  window.addEventListener('keydown', onKeyDownGlobal);
+  window.addEventListener('keyup', onKeyUpGlobal);
+  updateKeysDisplay();
+  updateRecordDisplay();
+}
+
+function buildBoard(){
+  const board = el('board');
+  board.innerHTML = '';
+  const cols = current.columns || 4;
+  // build lanes with key labels and subtle background
+  for(let i=0;i<cols;i++){
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.dataset.col = i+1;
+    lane.innerHTML = `<div class="label">${(current.keys && current.keys[i]) ? current.keys[i] : ('Key ' + (i+1))}</div><div style="flex:1"></div><div class="hitline"></div>`;
+    board.appendChild(lane);
+  }
+  updateKeysDisplay();
+}
+
+// ----- Run / Loop -----
+function startRun(){
+  if(!current.track){ alert('Selecione uma música'); return; }
+  buildBoard();
+  current.spawnedIndex = 0;
+  current.activeNotes = [];
+  current.activeHolds = {};
+  current.score = 0; current.hits = 0; current.misses = 0;
+  el('score').textContent = 0; el('hits').textContent = 0; el('misses').textContent = 0; el('total').textContent = current.totalNotes;
+
+  if(current.audio){
+    current.audio.pause(); current.audio.currentTime = 0;
+  }
+  current.running = true;
+
+  // start audio on gesture
+  const startAudio = ()=>{
+    if(current.audio && !current.audioStarted){
+      current.audio.play().catch(()=>{});
+      current.audioStarted = true;
+      current.startTime = performance.now()/1000 - (current.audio ? current.audio.currentTime : 0);
+    } else {
+      current.startTime = performance.now()/1000;
+    }
+    requestAnimationFrame(gameLoop);
+    window.removeEventListener('pointerdown', startAudio);
+    window.removeEventListener('keydown', startAudio);
+  };
+  window.addEventListener('pointerdown', startAudio);
+  window.addEventListener('keydown', startAudio);
+  if(current.audio){
+    current.audio.play().then(()=>{ current.audioStarted = true; current.startTime = performance.now()/1000; requestAnimationFrame(gameLoop); }).catch(()=>{ /* wait for gesture */ });
+  } else {
+    current.startTime = performance.now()/1000;
+    requestAnimationFrame(gameLoop);
+  }
+  showCountdownOverlay(1);
+}
+
+function gameLoop(){
+  if(!current.running) return;
+  const now = performance.now()/1000;
+  const audioTime = (current.audio && !isNaN(current.audio.currentTime)) ? current.audio.currentTime : (now - current.startTime);
+
+  // compute travelTime using lane height
+  const sampleLane = document.querySelector('.lane');
+  const laneRect = sampleLane ? sampleLane.getBoundingClientRect() : {height:420};
+  const travelPixels = (laneRect.height - HITLINE_OFFSET);
+  const pixelsPerSecond = PIXELS_PER_SECOND_BASE * current.speedScale;
+  const travelTime = travelPixels / pixelsPerSecond;
+
+  // spawn notes that are due to appear (time <= audioTime + travelTime)
+  while(current.spawnedIndex < current.notes.length && current.notes[current.spawnedIndex].time <= audioTime + travelTime + 0.05){
+    spawnNote(current.spawnedIndex, travelTime);
+    current.spawnedIndex++;
+  }
+
+  // cleanup late notes that passed without hit
+  const late = [];
+  current.activeNotes.forEach(n=>{
+    if(n.handled) return;
+    if(audioTime - n.time > current.hitWindow + 1.5){ // long after
+      // if point note not hit -> miss; if hold not fully hit -> miss
+      if(!n.hit){
+        markMiss(n);
+      }
+      try{ n.dom.remove(); }catch(e){}
+      n.handled = true;
+      late.push(n);
+    }
+    // for hold visuals: nothing active here, hold logic handled in key events and at end
+  });
+  current.activeNotes = current.activeNotes.filter(a=>!a.handled);
+
+  // check audio end
+  if(current.audio && current.audio.ended){
+    endRun();
+    return;
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+// ----- Spawn note / visuals -----
+// spawnNote robusto com visual claro para hold notes
+function spawnNote(index, travelTime){
+  const noteDef = current.notes[index];
+  if(!noteDef) return;
+  const lane = document.querySelector('.lane[data-col="'+noteDef.column+'"]');
+  if(!lane) return console.warn('spawnNote: lane missing for column', noteDef.column);
+
+  // criar elemento principal
+  const elNote = document.createElement('div');
+  elNote.className = 'note ' + (noteDef.duration ? 'hold' : 'point');
+
+  // cor / label da coluna (usa helper de cor existente)
+  const color = getColumnColor((noteDef.column - 1));
+  elNote.style.background = color.bg;
+  elNote.style.color = color.fg;
+
+  // texto da tecla
+  const keyLabel = (current.keys && current.keys[noteDef.column - 1]) ? current.keys[noteDef.column - 1] : '';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'label';
+  labelEl.textContent = keyLabel;
+  labelEl.style.zIndex = 12;
+  elNote.appendChild(labelEl);
+
+  // posição inicial: começar lá em cima (em bottom)
+  const laneRect = lane.getBoundingClientRect();
+  const startBottom = HITLINE_OFFSET + (laneRect.height - HITLINE_OFFSET);
+  elNote.style.bottom = startBottom + 'px';
+  // largura padrão (80% da lane)
+  elNote.style.left = '10%';
+  elNote.style.width = '80%';
+
+  lane.appendChild(elNote);
+
+  // se é hold: criar barra interna proporcional à duração
+  if(noteDef.duration && noteDef.duration > 0){
+    const inner = document.createElement('div');
+    inner.className = 'hold-inner';
+    inner.style.background = color.holdGradient || color.bg;
+    inner.style.zIndex = 11;
+
+    // calcular largura em px baseada na duração e na velocidade visual
+    const pixelsPerSecond = PIXELS_PER_SECOND_BASE * current.speedScale;
+    const desiredPx = Math.round(noteDef.duration * pixelsPerSecond);
+    // limite a largura para não ultrapassar a área disponível (80% da lane)
+    const maxWidth = Math.round(laneRect.width * 0.8) - 16; // margem
+    const widthPx = Math.max(12, Math.min(desiredPx, maxWidth));
+    inner.style.width = widthPx + 'px';
+
+    // adicionar rótulo sutil "HOLD" e tempo (opcional)
+    const lbl = document.createElement('div');
+    lbl.className = 'hold-label';
+    lbl.textContent = 'HOLD';
+    inner.appendChild(lbl);
+
+    elNote.appendChild(inner);
+
+    // adiciona caps
+    const capL = document.createElement('div');
+    capL.className = 'cap-left';
+    capL.style.background = color.holdGradient || color.bg;
+    capL.style.zIndex = 12;
+    elNote.appendChild(capL);
+
+    const capR = document.createElement('div');
+    capR.className = 'cap-right';
+    capR.style.background = color.holdGradient || color.bg;
+    capR.style.zIndex = 12;
+    // posicionar capRight relativo ao inner width (precisa de left em px)
+    // left relativo ao lane: 10% + inner width + small offset
+    requestAnimationFrame(()=> {
+      const innerRect = inner.getBoundingClientRect();
+      const laneRectNow = lane.getBoundingClientRect();
+      // calcular left em px a partir do lane (transformando em percent/px)
+      // queremos capRight.left = laneLeft + laneWidth*0.1 + innerRect.width - capWidth/2
+      const leftPx = Math.round(laneRectNow.left + laneRectNow.width * 0.10 + innerRect.width - 6) - laneRectNow.left;
+      capR.style.left = (leftPx) + 'px';
+      // capR é posicionado dentro do note, então ajustar para coordenada relativa ao note:
+      // convert absolute to note local by subtracting note left
+      try{
+        const noteRect = elNote.getBoundingClientRect();
+        const localLeft = leftPx - (noteRect.left - laneRectNow.left);
+        capR.style.left = localLeft + 'px';
+      }catch(e){}
+    });
+
+    elNote.appendChild(capR);
+  }
+
+  // registro de nota ativa
+  const nObj = { id:'n'+index, index, dom: elNote, spawnTime: performance.now()/1000, time: noteDef.time, column: noteDef.column, duration: noteDef.duration || 0, hit:false, handled:false };
+  current.activeNotes.push(nObj);
+
+  // anima para hitline
+  const travel = Math.max(0.12, (travelTime || ((laneRect.height - HITLINE_OFFSET) / (PIXELS_PER_SECOND_BASE * current.speedScale))));
+  elNote.style.transition = `bottom ${travel}s linear`;
+  requestAnimationFrame(()=> requestAnimationFrame(()=> { elNote.style.bottom = HITLINE_OFFSET + 'px'; }));
+
+  // cleanup de segurança (será removido mesmo que a lógica do jogo remova depois)
+  setTimeout(()=>{
+    if(!nObj.handled){
+      // deixa o mecanismo principal decidir (não forçar remoção aqui)
+    }
+  }, (travel + (nObj.duration || 0) + 2) * 1000);
+}
+
+// column color helper (subtle palettes)
+function getColumnColor(idx){
+  const palettes = [
+    {bg:'linear-gradient(180deg, rgba(38,70,83,0.18), rgba(38,70,83,0.06))', fg:'#e6eef8', holdGradient:'linear-gradient(90deg, rgba(38,70,83,0.28), rgba(38,70,83,0.18))'},
+    {bg:'linear-gradient(180deg, rgba(42,157,143,0.18), rgba(42,157,143,0.06))', fg:'#e6eef8', holdGradient:'linear-gradient(90deg, rgba(42,157,143,0.28), rgba(42,157,143,0.18))'},
+    {bg:'linear-gradient(180deg, rgba(233,196,106,0.18), rgba(233,196,106,0.06))', fg:'#082032', holdGradient:'linear-gradient(90deg, rgba(233,196,106,0.28), rgba(233,196,106,0.18))'},
+    {bg:'linear-gradient(180deg, rgba(244,162,97,0.18), rgba(244,162,97,0.06))', fg:'#082032', holdGradient:'linear-gradient(90deg, rgba(244,162,97,0.28), rgba(244,162,97,0.18))'},
+    {bg:'linear-gradient(180deg, rgba(144,190,109,0.16), rgba(144,190,109,0.06))', fg:'#082032', holdGradient:'linear-gradient(90deg, rgba(144,190,109,0.26), rgba(144,190,109,0.16))'},
+    {bg:'linear-gradient(180deg, rgba(87,117,144,0.12), rgba(87,117,144,0.04))', fg:'#e6eef8', holdGradient:'linear-gradient(90deg, rgba(87,117,144,0.22), rgba(87,117,144,0.12))'},
+    {bg:'linear-gradient(180deg, rgba(108,111,120,0.10), rgba(108,111,120,0.04))', fg:'#e6eef8', holdGradient:'linear-gradient(90deg, rgba(108,111,120,0.2), rgba(108,111,120,0.1))'}
+  ];
+  return palettes[idx % palettes.length];
+}
+
+// ----- Input handling (keydown/keyup) -----
+// We expect current.keys[] to define which physical key maps to each column.
+// On keydown: find nearest active note in that column that hasn't been hit. If within PERFECT/GOOD/BAD -> hit.
+// For holds: keydown at start registers hit and begins hold; keyup before hold end => miss.
+// For point notes: keydown hits; otherwise miss if passes.
+
+function onKeyDownGlobal(ev){
+  const k = ev.key.toUpperCase();
+  const colIdx = current.keys.indexOf(k);
+  if(colIdx === -1) return;
+  const column = colIdx + 1;
+  handleKeyPress(column, true);
+  ev.preventDefault();
+}
+
+function onKeyUpGlobal(ev){
+  const k = ev.key.toUpperCase();
+  const colIdx = current.keys.indexOf(k);
+  if(colIdx === -1) return;
+  const column = colIdx + 1;
+  handleKeyRelease(column);
+  ev.preventDefault();
+}
+
+function handleKeyPress(column, isDown){
+  if(!current.running) return;
+  const audioTime = current.audio ? current.audio.currentTime : (performance.now()/1000 - current.startTime);
+  // candidates: active notes in column not hit
+  const candidates = current.activeNotes.filter(n=> n.column === column && !n.hit);
+  if(candidates.length === 0){
+    // no note -> immediate miss (or ignore? here we consider a light miss)
+    current.misses++;
+    el('misses').textContent = current.misses;
+    showFeedback('MISS', 'bad');
+    checkGameOver();
+    return;
+  }
+  // find best (closest time)
+  let best = null, bestDist = Infinity;
+  candidates.forEach(c=>{
+    const d = Math.abs(c.time - audioTime);
+    if(d < bestDist){ bestDist = d; best = c; }
+  });
+  if(!best) return;
+  // evaluate
+  if(bestDist <= PERFECT_WINDOW){
+    registerHit(best, 'PERFECT');
+  } else if(bestDist <= GOOD_WINDOW){
+    registerHit(best, 'GOOD');
+  } else if(bestDist <= BAD_WINDOW){
+    registerHit(best, 'BAD');
+  } else {
+    // outside window -> miss
+    current.misses++;
+    el('misses').textContent = current.misses;
+    showFeedback('MISS', 'bad');
+    checkGameOver();
+  }
+}
+
+function handleKeyRelease(column){
+  // if there is an active hold in this column, check if its end was already reached
+  const holdObj = current.activeHolds[column];
+  if(holdObj){
+    const now = current.audio ? current.audio.currentTime : (performance.now()/1000 - current.startTime);
+    const expectedEnd = holdObj.note.time + holdObj.note.duration;
+    if(now + 0.03 < expectedEnd){ // released early -> miss
+      // partial miss = count as miss (could be scaled)
+      current.misses++;
+      el('misses').textContent = current.misses;
+      showFeedback('MISS (released)', 'bad');
+      // mark hold as failed
+      holdObj.failed = true;
+    } else {
+      // released after end -> fine
+    }
+    // remove hold tracking
+    delete current.activeHolds[column];
+  }
+}
+
+// register hit (on keydown)
+function registerHit(nObj, quality){
+  // if this note already hit, ignore
+  if(nObj.hit) return;
+  nObj.hit = true;
+  // scoring: base and multipliers
+  let base = 800;
+  if(quality === 'PERFECT'){ current.score += base + 600; showFeedback('PERFECT', 'perfect'); }
+  else if(quality === 'GOOD'){ current.score += Math.round(base * 0.75); showFeedback('GOOD', 'good'); }
+  else if(quality === 'BAD'){ current.score += Math.round(base * 0.4); showFeedback('BAD', 'bad'); }
+  el('score').textContent = current.score;
+  current.hits++;
+  el('hits').textContent = current.hits;
+
+  // if hold note: start hold-tracking
+  if(nObj.duration && nObj.duration > 0){
+    // track that this column is being held
+    current.activeHolds[nObj.column] = {note: nObj, startedAt: current.audio ? current.audio.currentTime : (performance.now()/1000 - current.startTime), failed:false};
+    // schedule check for end -> if not released before end, it's successful
+    setTimeout(()=>{
+      const hold = current.activeHolds[nObj.column];
+      if(hold && !hold.failed){
+        // successful hold completion
+        // reward additional score proportional to duration
+        const bonus = Math.round(300 * Math.min(2, nObj.duration / 1.5));
+        current.score += bonus;
+        el('score').textContent = current.score;
+        showFeedback('HOLD OK', 'good');
+      } else {
+        // failed or released early -> already counted as miss
+      }
+      // cleanup
+      delete current.activeHolds[nObj.column];
+      try{ nObj.dom.remove(); }catch(e){}
+      nObj.handled = true;
+    }, (nObj.duration + 0.1) * 1000); // wait duration seconds
+  } else {
+    // point note: remove dom immediately
+    try{ nObj.dom.remove(); }catch(e){}
+    nObj.handled = true;
+  }
+  checkRecord();
+}
+
+// mark miss when a note fully passes without hit
+function markMiss(nObj){
+  if(nObj.handled) return;
+  nObj.handled = true;
+  if(!nObj.hit){
+    current.misses++;
+    el('misses').textContent = current.misses;
+    showFeedback('MISS', 'bad');
+  }
+  try{ nObj.dom.remove(); }catch(e){}
+  checkGameOver();
+}
+
+// ----- feedback & overlays -----
+function showFeedback(text, kind){
+  const f = el('feedback');
+  f.textContent = text;
+  f.style.opacity = 1;
+  if(kind === 'perfect'){ f.style.background = 'rgba(255,211,107,0.12)'; f.style.color = 'var(--perfect)'; }
+  else if(kind === 'good'){ f.style.background = 'rgba(78,224,138,0.08)'; f.style.color = 'var(--good)'; }
+  else if(kind === 'bad'){ f.style.background = 'rgba(255,107,107,0.06)'; f.style.color = 'var(--bad)'; }
+  else { f.style.background = 'rgba(255,255,255,0.02)'; f.style.color = '#e6eef8'; }
+  // fade
+  f.style.transition = 'opacity 0.4s ease';
+  setTimeout(()=>{ f.style.opacity = 0; }, 500);
+}
+
+function showMenuOverlay(){
+  const container = el('overlayContainer');
+  container.innerHTML = `<div class="overlay"><div class="overlay-inner">
+    <h2>Bem-vindo</h2>
+    <p style="color:var(--muted)">Use as teclas exibidas acima das colunas para acertar as notas. Segure as teclas durante barras <i>(hold)</i> até o fim — soltar antes conta como erro. Acertos próximos ao tempo ganham mais pontos (Perfect → Good → Bad).</p>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+      <button id="closeMenu" class="big">Começar</button>
+    </div>
+  </div></div>`;
+  document.getElementById('closeMenu').addEventListener('click', ()=> el('overlayContainer').innerHTML = '');
+}
+
+function showCountdownOverlay(startFrom=3){
+  const container = el('overlayContainer');
+  let n = startFrom;
+  container.innerHTML = `<div class="overlay"><div class="overlay-inner" id="countdownBox"><h2>Prepare-se</h2><div id="countdownNum" style="font-size:48px">${n}</div></div></div>`;
+  const id = setInterval(()=>{
+    n--;
+    if(n<=0){ clearInterval(id); container.innerHTML=''; }
+    else document.getElementById('countdownNum').textContent = n;
+  }, 700);
+}
+
+function showGameOverOverlay(){
+  if(current.audio){ try{ current.audio.pause(); }catch(e){} }
+  current.running = false;
+  const container = el('overlayContainer');
+  const accuracy = current.totalNotes ? Math.round(100 * current.hits / current.totalNotes) : 0;
+  container.innerHTML = `<div class="overlay"><div class="overlay-inner"><h2>Game Over</h2>
+    <p style="color:var(--muted)">Você errou mais de 50% das notas.</p>
+    <p>Score: <b>${current.score}</b></p>
+    <p>Acertos: <b>${current.hits}</b> / ${current.totalNotes} (${accuracy}%)</p>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+      <button id="retryBtn" class="big">Tentar de novo</button>
+      <button id="menuBtn" class="big">Menu</button>
+    </div>
+  </div></div>`;
+  document.getElementById('retryBtn').addEventListener('click', ()=> { el('overlayContainer').innerHTML=''; startRun(); });
+  document.getElementById('menuBtn').addEventListener('click', ()=> { el('overlayContainer').innerHTML=''; showMenuOverlay(); });
+}
+
+function showResultOverlay(){
+  current.running = false;
+  finalizeRun();
+  const container = el('overlayContainer');
+  const accuracy = current.totalNotes ? Math.round(100 * current.hits / current.totalNotes) : 0;
+  container.innerHTML = `<div class="overlay"><div class="overlay-inner"><h2>Run concluído</h2>
+    <p>Score: <b>${current.score}</b></p>
+    <p>Acertos: <b>${current.hits}</b> / ${current.totalNotes} (${accuracy}%)</p>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+      <button id="retryBtn2" class="big">Tentar de novo</button>
+      <button id="menuBtn2" class="big">Menu</button>
+    </div>
+  </div></div>`;
+  document.getElementById('retryBtn2').addEventListener('click', ()=>{ el('overlayContainer').innerHTML=''; startRun(); });
+  document.getElementById('menuBtn2').addEventListener('click', ()=>{ el('overlayContainer').innerHTML=''; showMenuOverlay(); });
+}
+
+// ----- Run end / records -----
+function endRun(){
+  current.running = false;
+  showResultOverlay();
+}
+
+function finalizeRun(){
+  const key = recordKey(current.track?.id || 'none');
+  const prev = parseInt(localStorage.getItem(key) || '0', 10);
+  if(current.score > prev){
+    localStorage.setItem(key, String(current.score));
+  }
+}
+
+function checkRecord(){
+  const key = recordKey(current.track?.id || 'none');
+  const prev = parseInt(localStorage.getItem(key) || '0', 10);
+  if(current.score > prev){
+    localStorage.setItem(key, String(current.score));
+    el('recordDisplay').textContent = current.score;
+  }
+}
+
+function recordKey(id){ return `rhythm_highscore_${id || 'none'}`; }
+function updateRecordDisplay(){
+  const key = recordKey(current.track?.id || 'none');
+  const rec = localStorage.getItem(key);
+  el('recordDisplay').textContent = rec ? rec : '—';
+}
+function updateKeysDisplay(){
+  // garante que current.keys seja um array válido
+  let keys = current.keys;
+  if(typeof keys === 'string'){
+    // se por acaso alguém colou uma string inteira, pega só tokens curtos
+    keys = keys.trim().split(/\s+/).map(k=>k.trim()).filter(k=>k.length>0 && k.length<=6);
+  }
+  if(!Array.isArray(keys) || keys.length === 0){
+    keys = DEFAULT_KEYS.slice(0, current.columns || 4);
+  }
+  // limita ao número de colunas
+  keys = keys.slice(0, current.columns || 4);
+  // garante tokens curtos (proteção extra)
+  keys = keys.map(k => (String(k).trim().split(/\s+/)[0]).toUpperCase());
+  current.keys = keys;
+  el('keysDisplay').textContent = keys.join(' ');
+}
+
+// ----- misc helpers -----
+function checkGameOver(){
+  if(current.totalNotes && current.misses > current.totalNotes/2){
+    showGameOverOverlay();
+  }
+}
+
+// ----- parse note file and test helper (for console) -----
+/* You can test loading manifest via:
+   fetch('tracks/manifest.json').then(r=>r.json()).then(m=>console.log(m));
+*/
+
+// attach some console helpers for debugging (optional)
+window.__rhythm = { current, parseNotesTxtForGame };
+
+// ----- End -----
+</script>
+</body>
+</html>
